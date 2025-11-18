@@ -1,0 +1,691 @@
+openapi: 3.0.3
+info:
+  title: 代碼維護 API
+  description: 代碼維護模組的 RESTful API 規格
+  version: 1.0.0
+  contact:
+    name: IT 工程師
+    email: it@example.com
+
+servers:
+  - url: http://localhost:3001/api
+    description: 開發環境
+  - url: https://api.example.com/api
+    description: 生產環境
+
+tags:
+  - name: codes
+    description: 代碼維護相關 API
+
+security:
+  - bearerAuth: []
+
+paths:
+  /codes/tree:
+    get:
+      tags:
+        - codes
+      summary: 取得三層分類樹狀結構
+      description: 取得完整的大分類、中分類、細分類資料
+      operationId: getCodesTree
+      responses:
+        '200':
+          description: 成功取得資料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CodesTreeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /codes/batch:
+    post:
+      tags:
+        - codes
+      summary: 批次儲存代碼資料
+      description: 批次新增、修改、刪除代碼資料，所有操作在單一交易中執行
+      operationId: batchSaveCodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchSaveRequest'
+      responses:
+        '200':
+          description: 批次儲存成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchSaveResponse'
+        '207':
+          description: 部分操作失敗
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchSaveResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: 樂觀鎖定衝突
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /codes/search:
+    get:
+      tags:
+        - codes
+      summary: 查詢代碼資料
+      description: 根據關鍵字和篩選條件查詢代碼資料
+      operationId: searchCodes
+      parameters:
+        - name: keyword
+          in: query
+          description: 關鍵字（搜尋代號、名稱、說明）
+          required: false
+          schema:
+            type: string
+        - name: majorCatNo
+          in: query
+          description: 大分類編碼（篩選條件）
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9A-Z]{3}$'
+        - name: midCatCode
+          in: query
+          description: 中分類編碼（篩選條件）
+          required: false
+          schema:
+            type: string
+            pattern: '^[0-9A-Z]{3}$'
+        - name: page
+          in: query
+          description: 頁碼（從 1 開始）
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: pageSize
+          in: query
+          description: 每頁筆數
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchCodesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    MajorCategory:
+      type: object
+      required:
+        - majorCatId
+        - majorCatNo
+        - majorCatName
+      properties:
+        majorCatId:
+          type: integer
+          format: int64
+          description: 大分類序號
+        majorCatNo:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+          description: 大分類編碼（3 字元，唯一）
+        majorCatName:
+          type: string
+          maxLength: 120
+          description: 大分類名稱
+        createdBy:
+          type: string
+          maxLength: 10
+          description: 建檔人員
+        createdDate:
+          type: string
+          pattern: '^\d{14}$'
+          description: 建檔日期（YYYYMMDDHHmmss）
+        modifiedBy:
+          type: string
+          maxLength: 10
+          description: 修改人員
+        modifiedDate:
+          type: string
+          pattern: '^\d{14}$'
+          description: 修改日期（YYYYMMDDHHmmss）
+        lockVer:
+          type: integer
+          format: int64
+          description: 鎖定版本（樂觀鎖定）
+        createdTime:
+          type: string
+          format: date-time
+          description: 建立時間
+        updatedTime:
+          type: string
+          format: date-time
+          description: 更新時間
+
+    MidCategory:
+      type: object
+      required:
+        - midCatId
+        - majorCatId
+        - majorCatNo
+        - midCatCode
+        - codeDesc
+      properties:
+        midCatId:
+          type: integer
+          format: int64
+          description: 中分類序號
+        majorCatId:
+          type: integer
+          format: int64
+          description: 大分類序號
+        majorCatNo:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+          description: 大分類編碼
+        midCatCode:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+          description: 中分類編碼（與 majorCatNo 組成唯一鍵）
+        codeDesc:
+          type: string
+          maxLength: 120
+          description: 編碼說明
+        value1:
+          type: number
+          format: float
+          description: 數值1
+        value2:
+          type: number
+          format: float
+          description: 數值2
+        remark:
+          type: string
+          maxLength: 240
+          description: 備註
+        createdBy:
+          type: string
+          maxLength: 10
+        createdDate:
+          type: string
+          pattern: '^\d{14}$'
+        modifiedBy:
+          type: string
+          maxLength: 10
+        modifiedDate:
+          type: string
+          pattern: '^\d{14}$'
+        lockVer:
+          type: integer
+          format: int64
+        createdTime:
+          type: string
+          format: date-time
+        updatedTime:
+          type: string
+          format: date-time
+
+    SubCategory:
+      type: object
+      required:
+        - id
+        - midCatId
+        - majorCatNo
+        - midCatCode
+        - subcatCode
+        - codeDesc
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 細分類序號
+        midCatId:
+          type: integer
+          format: int64
+          description: 中分類序號
+        majorCatNo:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+          description: 大分類編碼
+        midCatCode:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+          description: 中分類編碼
+        subcatCode:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+          description: 細分類編碼（與 majorCatNo + midCatCode 組成唯一鍵）
+        codeDesc:
+          type: string
+          maxLength: 120
+          description: 編碼說明
+        remark:
+          type: string
+          maxLength: 240
+          description: 備註
+        createdBy:
+          type: string
+          maxLength: 10
+        createdDate:
+          type: string
+          pattern: '^\d{14}$'
+        modifiedBy:
+          type: string
+          maxLength: 10
+        modifiedDate:
+          type: string
+          pattern: '^\d{14}$'
+        lockVer:
+          type: integer
+          format: int64
+        createdTime:
+          type: string
+          format: date-time
+        updatedTime:
+          type: string
+          format: date-time
+
+    CodesTreeResponse:
+      type: object
+      required:
+        - majorCategories
+        - midCategories
+        - subCategories
+      properties:
+        majorCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/MajorCategory'
+        midCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/MidCategory'
+        subCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubCategory'
+
+    BatchSaveRequest:
+      type: object
+      properties:
+        creates:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/MajorCategoryCreate'
+              - $ref: '#/components/schemas/MidCategoryCreate'
+              - $ref: '#/components/schemas/SubCategoryCreate'
+        updates:
+          type: array
+          items:
+            oneOf:
+              - $ref: '#/components/schemas/MajorCategoryUpdate'
+              - $ref: '#/components/schemas/MidCategoryUpdate'
+              - $ref: '#/components/schemas/SubCategoryUpdate'
+        deletes:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryDelete'
+
+    MajorCategoryCreate:
+      type: object
+      required:
+        - majorCatNo
+        - majorCatName
+      properties:
+        majorCatNo:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+        majorCatName:
+          type: string
+          maxLength: 120
+        createdBy:
+          type: string
+          maxLength: 10
+
+    MidCategoryCreate:
+      type: object
+      required:
+        - majorCatNo
+        - midCatCode
+        - codeDesc
+      properties:
+        majorCatNo:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+        midCatCode:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+        codeDesc:
+          type: string
+          maxLength: 120
+        value1:
+          type: number
+          format: float
+        value2:
+          type: number
+          format: float
+        remark:
+          type: string
+          maxLength: 240
+        createdBy:
+          type: string
+          maxLength: 10
+
+    SubCategoryCreate:
+      type: object
+      required:
+        - majorCatNo
+        - midCatCode
+        - subcatCode
+        - codeDesc
+      properties:
+        majorCatNo:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+        midCatCode:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+        subcatCode:
+          type: string
+          pattern: '^[0-9A-Z]{3}$'
+        codeDesc:
+          type: string
+          maxLength: 120
+        remark:
+          type: string
+          maxLength: 240
+        createdBy:
+          type: string
+          maxLength: 10
+
+    MajorCategoryUpdate:
+      type: object
+      required:
+        - majorCatId
+        - lockVer
+      properties:
+        majorCatId:
+          type: integer
+          format: int64
+        lockVer:
+          type: integer
+          format: int64
+        majorCatName:
+          type: string
+          maxLength: 120
+        modifiedBy:
+          type: string
+          maxLength: 10
+
+    MidCategoryUpdate:
+      type: object
+      required:
+        - midCatId
+        - lockVer
+      properties:
+        midCatId:
+          type: integer
+          format: int64
+        lockVer:
+          type: integer
+          format: int64
+        codeDesc:
+          type: string
+          maxLength: 120
+        value1:
+          type: number
+          format: float
+        value2:
+          type: number
+          format: float
+        remark:
+          type: string
+          maxLength: 240
+        modifiedBy:
+          type: string
+          maxLength: 10
+
+    SubCategoryUpdate:
+      type: object
+      required:
+        - id
+        - lockVer
+      properties:
+        id:
+          type: integer
+          format: int64
+        lockVer:
+          type: integer
+          format: int64
+        codeDesc:
+          type: string
+          maxLength: 120
+        remark:
+          type: string
+          maxLength: 240
+        modifiedBy:
+          type: string
+          maxLength: 10
+
+    CategoryDelete:
+      type: object
+      required:
+        - type
+      properties:
+        majorCatId:
+          type: integer
+          format: int64
+        midCatId:
+          type: integer
+          format: int64
+        id:
+          type: integer
+          format: int64
+        lockVer:
+          type: integer
+          format: int64
+        type:
+          type: string
+          enum:
+            - major
+            - mid
+            - sub
+
+    BatchSaveResponse:
+      type: object
+      required:
+        - success
+        - trackingId
+      properties:
+        success:
+          type: boolean
+        trackingId:
+          type: string
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+        failedItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/FailedItem'
+
+    ErrorDetail:
+      type: object
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+        code:
+          type: string
+
+    FailedItem:
+      type: object
+      required:
+        - type
+        - index
+        - error
+      properties:
+        type:
+          type: string
+          enum:
+            - create
+            - update
+            - delete
+        index:
+          oneOf:
+            - type: integer
+            - type: string
+        error:
+          type: string
+
+    SearchCodesResponse:
+      type: object
+      required:
+        - results
+        - total
+        - page
+        - pageSize
+        - totalPages
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/SearchResult'
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+
+    SearchResult:
+      type: object
+      required:
+        - type
+        - matchedFields
+      properties:
+        type:
+          type: string
+          enum:
+            - major
+            - mid
+            - sub
+        major:
+          $ref: '#/components/schemas/MajorCategory'
+        mid:
+          $ref: '#/components/schemas/MidCategory'
+        sub:
+          $ref: '#/components/schemas/SubCategory'
+        matchedFields:
+          type: array
+          items:
+            type: string
+
+    ApiErrorResponse:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+        trackingId:
+          type: string
+
+  responses:
+    Unauthorized:
+      description: 未提供或無效的 Token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          example:
+            code: UNAUTHORIZED
+            message: 您沒有權限執行此操作
+            trackingId: TRK-1234567890-abc123
+
+    Forbidden:
+      description: 沒有「代碼維護」權限
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          example:
+            code: FORBIDDEN
+            message: 您沒有「代碼維護」權限
+            trackingId: TRK-1234567890-abc123
+
+    BadRequest:
+      description: 請求參數錯誤或驗證失敗
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          example:
+            code: VALIDATION_ERROR
+            message: 資料驗證失敗
+            details:
+              - field: majorCatNo
+                message: 大分類編碼為必填欄位
+                code: REQUIRED
+
+    InternalServerError:
+      description: 伺服器內部錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          example:
+            code: INTERNAL_SERVER_ERROR
+            message: 伺服器發生錯誤，請稍後再試
+            trackingId: TRK-1234567890-abc123
+

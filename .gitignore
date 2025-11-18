@@ -1,0 +1,22 @@
+# 忽略 Node.js 相關的模組
+node_modules
+
+# 忽略機敏資訊
+.env
+
+# 忽略 Python 暫存檔
+__pycache__/
+*.pyc
+
+# 忽略本機產生的資料庫檔案
+*.db
+*.db-journal
+
+# 忽略 OS 暫存檔
+.DS_Store
+
+# 忽略不必要的檔案
+*.log
+*.tmp
+*.bak
+[問題]-*.*
